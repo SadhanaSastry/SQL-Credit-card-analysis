@@ -1,0 +1,184 @@
+--Checeking Schema
+SELECT
+  *
+FROM
+ Portfolio.INFORMATION_SCHEMA.TABLES;
+GO
+--Looking over the data
+Select * from customers
+Select * from products
+select * from orders
+select * from order_items
+
+  ----- CASE STUDY QUESTIONS ------
+
+--1) Which product has the highest price? Only return a single row.
+
+Select top 1 * from products
+order by price desc
+
+--2) Which customer has made the most orders?
+
+with no_of_orders_per_customer as
+(Select customer_id, count(order_id) as total_orders
+from orders
+group by customer_id)
+
+Select concat(first_name, ' ', last_name) as customer_name
+from customers
+where customer_id in 
+(select customer_id from no_of_orders_per_customer
+where total_orders =
+(select max(total_orders) from no_of_orders_per_customer))
+order by 1
+
+/*Select c.first_name, c.last_name
+from customers c
+join no_of_orders_per_customer co on  c.customer_id = co.customer_id
+where total_orders = (select max(total_orders) from no_of_orders_per_customer)
+order by co.customer_id*/
+
+
+--3) What�s the total revenue per product?
+
+with cte1 as
+(Select product_id, sum(quantity) as quantitysold
+from order_items
+group by product_id)
+
+Select p.product_name, c.quantitysold*p.price as revenue 
+from products p
+left join cte1 c on p.product_id = c.product_id
+order by product_name
+
+
+
+--4) Find the day with the highest revenue.
+
+with cte2 as
+(Select o.order_date, sum(oi.quantity*p.price) as revenue 
+from order_items oi
+left join products p on oi.product_id = p.product_id
+left join orders o on oi.order_id = o.order_id
+group by order_date)
+
+Select order_date from cte2
+where revenue in (select max(revenue) from cte2)
+order by 1
+
+
+--5) Find the first order (by date) for each customer.
+
+Select customer_id, order_id as first_order_id
+from
+(Select c.customer_id, o.order_id, o.order_date,
+DENSE_RANK() over (partition by c.customer_id order by o.order_date) as rn
+from customers c
+join orders o on c.customer_id = o.customer_id) a
+where rn = 1
+
+
+--6) Find the top 3 customers who have ordered the most distinct products
+
+with cte3 as
+(Select o.customer_id, count(distinct(oi.product_id)) as distinctprod
+from orders o
+join order_items oi on o.order_id = oi.order_id
+group by customer_id)
+
+Select top 3 ct.customer_id, Concat(c.first_name, ' ', c.last_name) as name
+from cte3 ct
+join customers c on ct.customer_id = c.customer_id
+order by ct.distinctprod desc
+
+
+--7) Which product has been bought the least in terms of quantity?
+
+
+with cte4 as 
+(Select p.product_id, sum(oi.quantity) as total_quantity 
+from products p
+join order_items oi on p.product_id = oi.product_id
+group by p.product_id)
+Select product_id, total_quantity
+from cte4
+where total_quantity in
+(select min(total_quantity) from cte4)
+order by 1;
+
+   --Alternate Approach
+Create view A 
+as
+  Select p.product_id, sum(oi.quantity) as total_quantity 
+  from products p
+  join order_items oi on p.product_id = oi.product_id
+  group by p.product_id;
+
+Select A.product_id, p.product_name, A.total_quantity
+from A
+join products p on A.product_id = p.product_id
+where total_quantity in
+(select min(total_quantity) from A)
+order by 2
+
+--8) What is the median order total?
+ 
+With cte5 as 
+(Select oi.order_id, sum(oi.quantity*p.price) as total_revenue 
+from order_items oi
+join products p on oi.product_id = p.product_id
+group by oi.order_id)
+
+Select PERCENTILE_CONT(0.5) 
+    within group (order by total_revenue) over () as median_total
+from cte5 ;
+
+  --Alternate Approach using ROW_Number
+
+With cte5 as 
+(Select oi.order_id, sum(oi.quantity*p.price) as total_revenue
+from order_items oi
+join products p on oi.product_id = p.product_id
+group by oi.order_id),
+cte6 as 
+(Select ct.order_id, ct.total_revenue, ROW_NUMBER() over (order by ct.total_revenue Asc) as rwn_asc,
+ROW_NUMBER() over (order by ct.total_revenue desc) as rwn_desc
+from cte5 ct)
+
+Select Avg(total_revenue)
+from cte6
+where abs(rwn_asc - rwn_desc) <= 1
+
+--9) For each order, determine if it was �Expensive� (total over 300), �Affordable� (total over 100), or �Cheap�.
+
+with cte7 as 
+(Select oi.order_id, sum(oi.quantity*p.price) as total_revenue 
+from order_items oi
+join products p on oi.product_id = p.product_id
+group by oi.order_id)
+
+Select order_id, case 
+when total_revenue > 300 then 'Expensive' 
+when total_revenue > 100 then 'Affordable' 
+else 'Cheap' end as order_type
+from cte7
+
+--10) Find customers who have ordered the product with the highest price.
+
+
+Select concat(first_name, ' ', last_name) as customer_name
+from orders o
+left join order_items oi
+on o.order_id = oi.order_id
+left join products p on oi.product_id = p.product_id
+left join customers c on o.customer_id = c.customer_id
+where price in
+(select max(price) from products)
+
+  --Alternate Approach
+Select *
+from orders o
+left join order_items oi
+on o.order_id = oi.order_id
+left join products p on oi.product_id = p.product_id
+left join customers c on o.customer_id = c.customer_id*/
